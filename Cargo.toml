@@ -1,0 +1,18 @@
+[package]
+name = "extract-file-context"
+version = "0.1.0"
+edition = "2021"
+description = "Ferramenta desktop para extrair o contexto completo de um projeto em um único arquivo — ideal para LLMs"
+license = "MIT"
+repository = "https://github.com/thisames/extract-file-context"
+keywords = ["llm", "context", "extractor", "gui", "code"]
+categories = ["command-line-utilities", "development-tools"]
+
+[[bin]]
+name = "extract-file-context"
+path = "src/main.rs"
+
+[dependencies]
+eframe = "0.31"
+arboard = "3"
+rfd = "0.15"
