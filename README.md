@@ -19,9 +19,11 @@ Ferramenta desktop para extrair o contexto completo de um projeto de código em 
 - ⚙️ **Configurável** — Pastas/extensões ignoradas, filtros personalizados
 - 👁️ **Preview** — Visualize arquivos antes de extrair
 
-## 📥 Download
+---
 
-Vá em [**Releases**](../../releases) e baixe o executável para seu sistema:
+## 📥 Instalação
+
+Vá em [**Releases**](../../releases), baixe o arquivo para seu sistema e siga as instruções abaixo.
 
 | Sistema | Arquivo |
 |---------|---------|
@@ -30,26 +32,37 @@ Vá em [**Releases**](../../releases) e baixe o executável para seu sistema:
 | 🐧 Linux | `extract-file-context-x86_64-unknown-linux-gnu.tar.gz` |
 | 🪟 Windows | `extract-file-context-x86_64-pc-windows-msvc.zip` |
 
-### ⚠️ macOS — "desenvolvedor não identificado"
-
-O macOS bloqueia apps que não foram assinados pela Apple. Para abrir:
-
-**Opção 1 — Pelo terminal (recomendado):**
+### 🍎 macOS
 
 ```bash
-# Extraia o .tar.gz e depois rode:
+# 1. Extraia o arquivo baixado
+tar xzf extract-file-context-*.tar.gz
+
+# 2. Remova o bloqueio do macOS (só precisa fazer uma vez)
 xattr -d com.apple.quarantine extract-file-context
+
+# 3. Execute
+./extract-file-context
+```
+
+> **Por que o passo 2?** O macOS bloqueia qualquer app baixado fora da App Store que não tenha assinatura paga da Apple ($99/ano). O comando `xattr` remove esse bloqueio. É seguro — o código é open source, você pode verificar.
+
+### 🐧 Linux
+
+```bash
+tar xzf extract-file-context-*.tar.gz
 chmod +x extract-file-context
 ./extract-file-context
 ```
 
-**Opção 2 — Pelo Finder:**
+### 🪟 Windows
 
-1. Clique com **botão direito** (ou Control + clique) no app
-2. Clique em **"Abrir"**
-3. Na janela de aviso, clique **"Abrir"** novamente
+1. Extraia o `.zip`
+2. Execute `extract-file-context.exe`
 
-> Isso só precisa ser feito **uma vez**. Depois o app abre normalmente.
+> Se o Windows Defender bloquear, clique em "Mais informações" → "Executar assim mesmo".
+
+---
 
 ## 🚀 Como usar
 
@@ -60,25 +73,22 @@ chmod +x extract-file-context
 5. Clique em **🚀 Extrair arquivos selecionados**
 6. Use **📋 Copiar tudo** ou **🗜️ Copiar mini** para colar na LLM
 
-## 🛠️ Compilar do código-fonte
+---
 
-### Pré-requisitos
+## 🛠️ Compilar do código-fonte (opcional)
 
-- [Rust](https://rustup.rs/) (1.75+)
-
-### Build
+Só necessário se quiser contribuir ou modificar o código. Para **uso normal**, baixe o executável pronto na seção acima.
 
 ```bash
+# Pré-requisito: Rust (https://rustup.rs)
 git clone https://github.com/thisames/extract-file-context.git
 cd extract-file-context
 cargo run --release
 ```
 
-O binário será gerado em `target/release/extract-file-context`.
+---
 
 ## 📸 Screenshot
-
-Ao abrir o app, você verá:
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
@@ -100,4 +110,3 @@ Ao abrir o app, você verá:
 ## 📄 Licença
 
 [MIT](LICENSE)
-
