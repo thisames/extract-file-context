@@ -30,7 +30,26 @@ Vá em [**Releases**](../../releases) e baixe o executável para seu sistema:
 | 🐧 Linux | `extract-file-context-x86_64-unknown-linux-gnu.tar.gz` |
 | 🪟 Windows | `extract-file-context-x86_64-pc-windows-msvc.zip` |
 
-> **macOS:** Se aparecer aviso de segurança, clique com botão direito → Abrir, ou execute: `xattr -d com.apple.quarantine extract-file-context`
+### ⚠️ macOS — "desenvolvedor não identificado"
+
+O macOS bloqueia apps que não foram assinados pela Apple. Para abrir:
+
+**Opção 1 — Pelo terminal (recomendado):**
+
+```bash
+# Extraia o .tar.gz e depois rode:
+xattr -d com.apple.quarantine extract-file-context
+chmod +x extract-file-context
+./extract-file-context
+```
+
+**Opção 2 — Pelo Finder:**
+
+1. Clique com **botão direito** (ou Control + clique) no app
+2. Clique em **"Abrir"**
+3. Na janela de aviso, clique **"Abrir"** novamente
+
+> Isso só precisa ser feito **uma vez**. Depois o app abre normalmente.
 
 ## 🚀 Como usar
 

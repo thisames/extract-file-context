@@ -42,10 +42,16 @@ jobs:
       - name: Build
         run: cargo build --release --target ${{ matrix.target }}
 
+      - name: Sign macOS binary (ad-hoc)
+        if: contains(matrix.target, 'apple-darwin')
+        run: |
+          codesign --force --deep -s - target/${{ matrix.target }}/release/extract-file-context
+
       - name: Package (Unix)
         if: matrix.os != 'windows-latest'
         run: |
           cd target/${{ matrix.target }}/release
+          chmod +x extract-file-context
           tar czf ../../../extract-file-context-${{ matrix.target }}.tar.gz extract-file-context
           cd ../../..
 
