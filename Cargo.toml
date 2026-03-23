@@ -1,6 +1,6 @@
 [package]
 name = "extract-file-context"
-version = "0.1.0"
+version = "0.2.0"
 edition = "2021"
 description = "Ferramenta desktop para extrair o contexto completo de um projeto em um único arquivo — ideal para LLMs"
 license = "MIT"
