@@ -1,5 +1,5 @@
 // ══════════════════════════════════════════════════════════════
-//  Interface gráfica (egui / eframe)
+//  Graphical interface (egui / eframe)
 // ══════════════════════════════════════════════════════════════
 
 use eframe::egui;
@@ -9,16 +9,16 @@ use std::sync::{Arc, Mutex};
 use std::thread;
 
 use crate::config::{
-    dirs_ignorados_padrao, extensoes_das_linguagens, extensoes_ignoradas_padrao, LINGUAGENS,
+    default_ignored_dirs, extensions_from_languages, default_ignored_extensions, LANGUAGES,
 };
-use crate::extractor::{build_tree, extrair_arquivos, minificar, FileNode};
+use crate::extractor::{build_tree, extract_files, minify, FileNode};
 
-// ── Tipos auxiliares ────────────────────────────────────────
+// ── Auxiliary types ────────────────────────────────────────
 
 #[derive(PartialEq, Clone, Copy)]
-pub enum FormatoSaida {
+pub enum OutputFormat {
     Markdown,
-    Texto,
+    Text,
 }
 
 pub enum ExtractionState {
@@ -30,206 +30,206 @@ pub enum ExtractionState {
 // ── App ─────────────────────────────────────────────────────
 
 pub struct App {
-    // Estado
-    caminho_projeto: String,
+    // State
+    project_path: String,
     tree_nodes: Vec<FileNode>,
-    formato_saida: FormatoSaida,
-    incluir_arvore: bool,
+    output_format: OutputFormat,
+    include_tree: bool,
 
-    // Pastas/extensões ignoradas
-    dirs_ignorados: Vec<String>,
-    exts_ignoradas: Vec<String>,
-    novo_dir: String,
-    nova_ext: String,
-    filtro_ext: String,
+    // Ignored folders/extensions
+    ignored_dirs: Vec<String>,
+    ignored_exts: Vec<String>,
+    new_dir: String,
+    new_ext: String,
+    ext_filter: String,
 
-    // Busca
-    busca: String,
+    // Search
+    search: String,
 
-    // Filtro por linguagem
-    filtrar_por_linguagem: bool,
-    linguagens_selecionadas: Vec<bool>,
+    // Language filter
+    filter_by_language: bool,
+    selected_languages: Vec<bool>,
 
-    // Resultado
-    resultado_conteudo: String,
+    // Result
+    result_content: String,
     result_label: String,
     extraction_state: ExtractionState,
     extraction_result: Arc<Mutex<Option<(String, usize)>>>,
 
     // Preview
-    preview_conteudo: String,
+    preview_content: String,
     preview_label: String,
     show_preview: bool,
 
     // Feedback
     status_label: String,
-    copiado_feedback: Option<std::time::Instant>,
-    copiado_mini_feedback: Option<std::time::Instant>,
+    copied_feedback: Option<std::time::Instant>,
+    copied_mini_feedback: Option<std::time::Instant>,
 
-    // Contagem
-    total_encontrados: usize,
+    // Count
+    total_found: usize,
 }
 
 impl App {
     pub fn new() -> Self {
         Self {
-            caminho_projeto: String::new(),
+            project_path: String::new(),
             tree_nodes: Vec::new(),
-            formato_saida: FormatoSaida::Markdown,
-            incluir_arvore: true,
-            dirs_ignorados: dirs_ignorados_padrao(),
-            exts_ignoradas: extensoes_ignoradas_padrao(),
-            novo_dir: String::new(),
-            nova_ext: String::new(),
-            filtro_ext: String::new(),
-            busca: String::new(),
-            filtrar_por_linguagem: false,
-            linguagens_selecionadas: vec![false; LINGUAGENS.len()],
-            resultado_conteudo: String::new(),
-            result_label: "Clique em um arquivo para preview ou extraia para ver o resultado aqui."
+            output_format: OutputFormat::Markdown,
+            include_tree: true,
+            ignored_dirs: default_ignored_dirs(),
+            ignored_exts: default_ignored_extensions(),
+            new_dir: String::new(),
+            new_ext: String::new(),
+            ext_filter: String::new(),
+            search: String::new(),
+            filter_by_language: false,
+            selected_languages: vec![false; LANGUAGES.len()],
+            result_content: String::new(),
+            result_label: "Click a file for preview or extract to see the result here."
                 .to_string(),
             extraction_state: ExtractionState::Idle,
             extraction_result: Arc::new(Mutex::new(None)),
-            preview_conteudo: String::new(),
+            preview_content: String::new(),
             preview_label: String::new(),
             show_preview: false,
-            status_label: "Selecione uma pasta para começar.".to_string(),
-            copiado_feedback: None,
-            copiado_mini_feedback: None,
-            total_encontrados: 0,
+            status_label: "Select a folder to start.".to_string(),
+            copied_feedback: None,
+            copied_mini_feedback: None,
+            total_found: 0,
         }
     }
 
-    fn carregar_arvore(&mut self) {
-        let path = PathBuf::from(shellexpand(&self.caminho_projeto));
+    fn load_tree(&mut self) {
+        let path = PathBuf::from(shellexpand(&self.project_path));
         if !path.is_dir() {
             self.status_label =
-                format!("Erro: '{}' não é uma pasta válida.", self.caminho_projeto);
+                format!("Error: '{}' is not a valid folder.", self.project_path);
             return;
         }
-        self.caminho_projeto = path.to_string_lossy().to_string();
+        self.project_path = path.to_string_lossy().to_string();
 
-        let dirs_set: HashSet<String> = self.dirs_ignorados.iter().cloned().collect();
-        let exts_set: HashSet<String> = self.exts_ignoradas.iter().cloned().collect();
+        let dirs_set: HashSet<String> = self.ignored_dirs.iter().cloned().collect();
+        let exts_set: HashSet<String> = self.ignored_exts.iter().cloned().collect();
 
-        let filtro = if self.filtrar_por_linguagem {
-            let lang_exts = extensoes_das_linguagens(&self.linguagens_selecionadas);
+        let filter = if self.filter_by_language {
+            let lang_exts = extensions_from_languages(&self.selected_languages);
             if lang_exts.is_empty() {
                 None
             } else {
                 Some(lang_exts)
             }
-        } else if self.filtro_ext.trim().is_empty() {
+        } else if self.ext_filter.trim().is_empty() {
             None
         } else {
             Some(
-                self.filtro_ext
+                self.ext_filter
                     .split_whitespace()
                     .map(String::from)
                     .collect::<HashSet<String>>(),
             )
         };
 
-        self.tree_nodes = build_tree(&path, &dirs_set, &exts_set, &filtro).unwrap_or_default();
+        self.tree_nodes = build_tree(&path, &dirs_set, &exts_set, &filter).unwrap_or_default();
 
-        self.total_encontrados = self.tree_nodes.iter().map(|n| n.total_files()).sum();
-        self.resultado_conteudo.clear();
-        self.preview_conteudo.clear();
+        self.total_found = self.tree_nodes.iter().map(|n| n.total_files()).sum();
+        self.result_content.clear();
+        self.preview_content.clear();
         self.show_preview = false;
         self.result_label =
-            "Clique em um arquivo para preview ou extraia para ver o resultado aqui.".to_string();
+            "Click a file for preview or extract to see the result here.".to_string();
         self.status_label = format!(
-            "{} arquivo(s) encontrado(s). Marque/desmarque e clique em Extrair.",
-            self.total_encontrados
+            "{} file(s) found. Check/uncheck and click Extract.",
+            self.total_found
         );
     }
 
-    fn contar_selecionados(&self) -> usize {
+    fn count_selected(&self) -> usize {
         self.tree_nodes.iter().map(|n| n.file_count()).sum()
     }
 
-    fn extrair(&mut self) {
-        if self.caminho_projeto.is_empty() {
-            self.status_label = "Selecione uma pasta do projeto primeiro!".to_string();
+    fn extract(&mut self) {
+        if self.project_path.is_empty() {
+            self.status_label = "Select a project folder first!".to_string();
             return;
         }
 
-        let arquivos: Vec<PathBuf> = self
+        let files: Vec<PathBuf> = self
             .tree_nodes
             .iter()
             .flat_map(|n| n.collect_checked_files())
             .collect();
 
-        if arquivos.is_empty() {
-            self.status_label = "Nenhum arquivo selecionado!".to_string();
+        if files.is_empty() {
+            self.status_label = "No files selected!".to_string();
             return;
         }
 
-        let base = PathBuf::from(&self.caminho_projeto);
-        let formato = match self.formato_saida {
-            FormatoSaida::Markdown => "md",
-            FormatoSaida::Texto => "txt",
+        let base = PathBuf::from(&self.project_path);
+        let format = match self.output_format {
+            OutputFormat::Markdown => "md",
+            OutputFormat::Text => "txt",
         };
-        let incluir_arvore = self.incluir_arvore;
-        let progress = Arc::new(Mutex::new((0usize, arquivos.len(), String::new())));
+        let include_tree = self.include_tree;
+        let progress = Arc::new(Mutex::new((0usize, files.len(), String::new())));
         let result_holder = self.extraction_result.clone();
         let progress_clone = progress.clone();
 
         self.extraction_state = ExtractionState::Running(progress);
-        self.result_label = "⏳ Extraindo…".to_string();
+        self.result_label = "Extracting…".to_string();
         self.show_preview = false;
 
         *result_holder.lock().unwrap() = None;
 
-        let formato_owned = formato.to_string();
+        let format_owned = format.to_string();
         thread::spawn(move || {
-            let resultado = extrair_arquivos(
-                &arquivos,
+            let result = extract_files(
+                &files,
                 &base,
-                &formato_owned,
-                incluir_arvore,
+                &format_owned,
+                include_tree,
                 Some(progress_clone),
             );
-            *result_holder.lock().unwrap() = Some(resultado);
+            *result_holder.lock().unwrap() = Some(result);
         });
     }
 
-    fn mostrar_preview(&mut self, path: &PathBuf, base: &str) {
-        if !self.resultado_conteudo.is_empty() {
+    fn show_preview(&mut self, path: &PathBuf, base: &str) {
+        if !self.result_content.is_empty() {
             return;
         }
-        let caminho_relativo = path
+        let relative_path = path
             .strip_prefix(base)
             .unwrap_or(path)
             .to_string_lossy()
             .to_string();
 
         match std::fs::read_to_string(path) {
-            Ok(mut conteudo) => {
+            Ok(mut content) => {
                 let max_preview = 50_000;
-                let mut truncado = false;
-                if conteudo.len() > max_preview {
-                    conteudo.truncate(max_preview);
-                    truncado = true;
+                let mut truncated = false;
+                if content.len() > max_preview {
+                    content.truncate(max_preview);
+                    truncated = true;
                 }
-                if truncado {
-                    conteudo.push_str(&format!(
-                        "\n\n... [TRUNCADO - {} caracteres] ...",
+                if truncated {
+                    content.push_str(&format!(
+                        "\n\n... [TRUNCATED - {} characters] ...",
                         max_preview
                     ));
                 }
-                self.preview_label = format!("👁️ Preview: {}", caminho_relativo);
-                self.preview_conteudo = conteudo;
+                self.preview_label = format!("Preview: {}", relative_path);
+                self.preview_content = content;
                 self.show_preview = true;
             }
             Err(e) => {
                 let err_str = e.to_string();
                 if err_str.contains("utf-8") || err_str.contains("UTF-8") {
-                    self.preview_label = format!("⚠️ {} — Arquivo binário", caminho_relativo);
+                    self.preview_label = format!("{} - Binary file", relative_path);
                 } else {
-                    self.preview_label = format!("❌ Erro ao ler {}: {}", caminho_relativo, e);
+                    self.preview_label = format!("Error reading {}: {}", relative_path, e);
                 }
-                self.preview_conteudo.clear();
+                self.preview_content.clear();
                 self.show_preview = true;
             }
         }
@@ -253,72 +253,72 @@ fn shellexpand(s: &str) -> String {
 
 impl eframe::App for App {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
-        // Verifica se a extração terminou
+        // Check if extraction finished
         if let ExtractionState::Running(ref progress) = self.extraction_state {
             let (current, total, name) = progress.lock().unwrap().clone();
             if current > 0 {
-                self.status_label = format!("Extraindo ({}/{}): {}", current, total, name);
+                self.status_label = format!("Extracting ({}/{}): {}", current, total, name);
             }
             ctx.request_repaint();
 
-            if let Some((result, linhas)) = self.extraction_result.lock().unwrap().take() {
-                let total = self.contar_selecionados();
-                self.resultado_conteudo = result;
+            if let Some((result, lines)) = self.extraction_result.lock().unwrap().take() {
+                let total = self.count_selected();
+                self.result_content = result;
                 self.result_label = format!(
-                    "✅ Resultado da extração — {} arquivo(s), {} linhas — Pronto para copiar!",
-                    total, linhas
+                    "Extraction result — {} file(s), {} lines — Ready to copy!",
+                    total, lines
                 );
                 self.status_label = format!(
-                    "✅ {} arquivo(s) extraído(s) — {} linhas de código — Use '📋 Copiar tudo' para copiar.",
-                    total, linhas
+                    "{} file(s) extracted — {} lines of code — Use 'Copy All' to copy.",
+                    total, lines
                 );
                 self.show_preview = false;
                 self.extraction_state = ExtractionState::Done;
             }
         }
 
-        // Reset feedback de cópia
-        if let Some(instant) = self.copiado_feedback {
+        // Reset copy feedback
+        if let Some(instant) = self.copied_feedback {
             if instant.elapsed().as_secs() >= 2 {
-                self.copiado_feedback = None;
+                self.copied_feedback = None;
             }
         }
-        if let Some(instant) = self.copiado_mini_feedback {
+        if let Some(instant) = self.copied_mini_feedback {
             if instant.elapsed().as_secs() >= 2 {
-                self.copiado_mini_feedback = None;
+                self.copied_mini_feedback = None;
             }
         }
 
-        // ── Barra superior ──
+        // ── Top bar ──
         egui::TopBottomPanel::top("top_bar").show(ctx, |ui| {
             ui.add_space(4.0);
             ui.horizontal(|ui| {
-                ui.label("Pasta do projeto:");
+                ui.label("Project folder:");
                 let resp = ui.add(
-                    egui::TextEdit::singleline(&mut self.caminho_projeto)
+                    egui::TextEdit::singleline(&mut self.project_path)
                         .desired_width(400.0)
-                        .hint_text("Cole ou digite o caminho…"),
+                        .hint_text("Paste or type the path…"),
                 );
                 if resp.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter)) {
-                    self.carregar_arvore();
+                    self.load_tree();
                 }
-                if ui.button("▶ Carregar").clicked() {
-                    self.carregar_arvore();
+                if ui.button("Load").clicked() {
+                    self.load_tree();
                 }
-                if ui.button("📂 Escolher pasta…").clicked() {
+                if ui.button("Choose folder…").clicked() {
                     if let Some(path) = rfd::FileDialog::new().pick_folder() {
-                        self.caminho_projeto = path.to_string_lossy().to_string();
-                        self.carregar_arvore();
+                        self.project_path = path.to_string_lossy().to_string();
+                        self.load_tree();
                     }
                 }
-                if ui.button("🔄 Recarregar").clicked() {
-                    self.carregar_arvore();
+                if ui.button("Reload").clicked() {
+                    self.load_tree();
                 }
             });
             ui.add_space(4.0);
         });
 
-        // ── Barra de status (inferior) ──
+        // ── Status bar (bottom) ──
         egui::TopBottomPanel::bottom("status_bar").show(ctx, |ui| {
             ui.add_space(2.0);
             ui.horizontal(|ui| {
@@ -338,15 +338,15 @@ impl eframe::App for App {
             ui.add_space(2.0);
         });
 
-        // ── Painel direito: configurações ──
+        // ── Right panel: configuration ──
         egui::SidePanel::right("config_panel")
             .default_width(280.0)
             .min_width(220.0)
             .show(ctx, |ui| {
                 egui::ScrollArea::vertical().show(ui, |ui| {
-                    // Pastas ignoradas
+                    // Ignored folders
                     ui.group(|ui| {
-                        ui.label(egui::RichText::new("📁 Pastas ignoradas").strong());
+                        ui.label(egui::RichText::new("Ignored Folders").strong());
                         ui.add_space(4.0);
 
                         let mut to_remove = None;
@@ -354,7 +354,7 @@ impl eframe::App for App {
                             .id_salt("dirs_list")
                             .max_height(120.0)
                             .show(ui, |ui| {
-                                for (i, d) in self.dirs_ignorados.iter().enumerate() {
+                                for (i, d) in self.ignored_dirs.iter().enumerate() {
                                     ui.horizontal(|ui| {
                                         ui.monospace(d);
                                         if ui.small_button("✕").clicked() {
@@ -364,20 +364,20 @@ impl eframe::App for App {
                                 }
                             });
                         if let Some(i) = to_remove {
-                            self.dirs_ignorados.remove(i);
+                            self.ignored_dirs.remove(i);
                         }
 
                         ui.horizontal(|ui| {
                             ui.add(
-                                egui::TextEdit::singleline(&mut self.novo_dir)
+                                egui::TextEdit::singleline(&mut self.new_dir)
                                     .desired_width(150.0)
-                                    .hint_text("nova pasta…"),
+                                    .hint_text("new folder…"),
                             );
                             if ui.button("+").clicked() {
-                                let val = self.novo_dir.trim().to_string();
-                                if !val.is_empty() && !self.dirs_ignorados.contains(&val) {
-                                    self.dirs_ignorados.push(val);
-                                    self.novo_dir.clear();
+                                let val = self.new_dir.trim().to_string();
+                                if !val.is_empty() && !self.ignored_dirs.contains(&val) {
+                                    self.ignored_dirs.push(val);
+                                    self.new_dir.clear();
                                 }
                             }
                         });
@@ -385,9 +385,9 @@ impl eframe::App for App {
 
                     ui.add_space(6.0);
 
-                    // Extensões ignoradas
+                    // Ignored extensions
                     ui.group(|ui| {
-                        ui.label(egui::RichText::new("🚫 Extensões ignoradas").strong());
+                        ui.label(egui::RichText::new("Ignored Extensions").strong());
                         ui.add_space(4.0);
 
                         let mut to_remove = None;
@@ -395,7 +395,7 @@ impl eframe::App for App {
                             .id_salt("exts_list")
                             .max_height(120.0)
                             .show(ui, |ui| {
-                                for (i, e) in self.exts_ignoradas.iter().enumerate() {
+                                for (i, e) in self.ignored_exts.iter().enumerate() {
                                     ui.horizontal(|ui| {
                                         ui.monospace(e);
                                         if ui.small_button("✕").clicked() {
@@ -405,23 +405,23 @@ impl eframe::App for App {
                                 }
                             });
                         if let Some(i) = to_remove {
-                            self.exts_ignoradas.remove(i);
+                            self.ignored_exts.remove(i);
                         }
 
                         ui.horizontal(|ui| {
                             ui.add(
-                                egui::TextEdit::singleline(&mut self.nova_ext)
+                                egui::TextEdit::singleline(&mut self.new_ext)
                                     .desired_width(150.0)
                                     .hint_text(".ext"),
                             );
                             if ui.button("+").clicked() {
-                                let mut val = self.nova_ext.trim().to_string();
+                                let mut val = self.new_ext.trim().to_string();
                                 if !val.starts_with('.') {
                                     val = format!(".{}", val);
                                 }
-                                if !val.is_empty() && !self.exts_ignoradas.contains(&val) {
-                                    self.exts_ignoradas.push(val);
-                                    self.nova_ext.clear();
+                                if !val.is_empty() && !self.ignored_exts.contains(&val) {
+                                    self.ignored_exts.push(val);
+                                    self.new_ext.clear();
                                 }
                             }
                         });
@@ -429,12 +429,12 @@ impl eframe::App for App {
 
                     ui.add_space(6.0);
 
-                    // Filtro por extensão
+                    // Extension filter
                     ui.group(|ui| {
-                        ui.label(egui::RichText::new("🔍 Filtrar por extensão").strong());
-                        ui.label("Ex: .py .ts .js (vazio = todas)");
+                        ui.label(egui::RichText::new("Filter by Extension").strong());
+                        ui.label("Ex: .py .ts .js (empty = all)");
                         ui.add(
-                            egui::TextEdit::singleline(&mut self.filtro_ext)
+                            egui::TextEdit::singleline(&mut self.ext_filter)
                                 .desired_width(ui.available_width())
                                 .hint_text(".py .ts .js"),
                         );
@@ -442,26 +442,26 @@ impl eframe::App for App {
 
                     ui.add_space(6.0);
 
-                    // Filtro por linguagem
+                    // Language filter
                     ui.group(|ui| {
-                        ui.label(egui::RichText::new("🌐 Filtrar por linguagem").strong());
+                        ui.label(egui::RichText::new("Filter by Language").strong());
                         let changed = ui
                             .checkbox(
-                                &mut self.filtrar_por_linguagem,
-                                "Ativar filtro por linguagem",
+                                &mut self.filter_by_language,
+                                "Enable language filter",
                             )
                             .changed();
 
-                        if self.filtrar_por_linguagem {
+                        if self.filter_by_language {
                             ui.add_space(4.0);
                             ui.horizontal(|ui| {
-                                if ui.small_button("Todas").clicked() {
-                                    for sel in self.linguagens_selecionadas.iter_mut() {
+                                if ui.small_button("All").clicked() {
+                                    for sel in self.selected_languages.iter_mut() {
                                         *sel = true;
                                     }
                                 }
-                                if ui.small_button("Nenhuma").clicked() {
-                                    for sel in self.linguagens_selecionadas.iter_mut() {
+                                if ui.small_button("None").clicked() {
+                                    for sel in self.selected_languages.iter_mut() {
                                         *sel = false;
                                     }
                                 }
@@ -472,22 +472,22 @@ impl eframe::App for App {
                                 .id_salt("lang_list")
                                 .max_height(180.0)
                                 .show(ui, |ui| {
-                                    for (i, lang) in LINGUAGENS.iter().enumerate() {
+                                    for (i, lang) in LANGUAGES.iter().enumerate() {
                                         ui.checkbox(
-                                            &mut self.linguagens_selecionadas[i],
-                                            format!("{} {}", lang.emoji, lang.nome),
+                                            &mut self.selected_languages[i],
+                                            format!("{} {}", lang.name, lang.name),
                                         );
                                     }
                                 });
 
-                            let exts = extensoes_das_linguagens(&self.linguagens_selecionadas);
+                            let exts = extensions_from_languages(&self.selected_languages);
                             if !exts.is_empty() {
                                 ui.add_space(2.0);
                                 let mut sorted: Vec<_> = exts.iter().collect();
                                 sorted.sort();
                                 ui.label(
                                     egui::RichText::new(format!(
-                                        "Extensões: {}",
+                                        "Extensions: {}",
                                         sorted
                                             .iter()
                                             .map(|s| s.as_str())
@@ -500,99 +500,99 @@ impl eframe::App for App {
                             }
                         }
 
-                        if changed && !self.caminho_projeto.is_empty() {
-                            // placeholder para recarregar
+                        if changed && !self.project_path.is_empty() {
+                            // placeholder for reload
                         }
                     });
 
                     ui.add_space(6.0);
 
-                    // Opções de saída
+                    // Output options
                     ui.group(|ui| {
-                        ui.label(egui::RichText::new("⚙️ Opções de saída").strong());
+                        ui.label(egui::RichText::new("Output Options").strong());
                         ui.horizontal(|ui| {
                             ui.radio_value(
-                                &mut self.formato_saida,
-                                FormatoSaida::Markdown,
+                                &mut self.output_format,
+                                OutputFormat::Markdown,
                                 "Markdown (.md)",
                             );
                             ui.radio_value(
-                                &mut self.formato_saida,
-                                FormatoSaida::Texto,
-                                "Texto (.txt)",
+                                &mut self.output_format,
+                                OutputFormat::Text,
+                                "Text (.txt)",
                             );
                         });
-                        ui.checkbox(&mut self.incluir_arvore, "Incluir árvore do projeto");
+                        ui.checkbox(&mut self.include_tree, "Include project tree");
                     });
 
                     ui.add_space(8.0);
 
-                    // Botão de extração
+                    // Extract button
                     let btn = egui::Button::new(
-                        egui::RichText::new("🚀 Extrair arquivos selecionados").strong(),
+                        egui::RichText::new("Extract Selected Files").strong(),
                     )
                     .min_size(egui::vec2(ui.available_width(), 36.0));
                     if ui.add(btn).clicked() {
-                        self.extrair();
+                        self.extract();
                     }
                 });
             });
 
-        // ── Painel central ──
+        // ── Central panel ──
         egui::CentralPanel::default().show(ctx, |ui| {
             let available = ui.available_size();
 
             ui.horizontal_top(|ui| {
-                // ━━━ PAINEL ESQUERDO: árvore ━━━
+                // ━━━ LEFT PANEL: tree ━━━
                 ui.vertical(|ui| {
                     ui.set_min_width(available.x * 0.4);
                     ui.set_max_width(available.x * 0.5);
 
                     ui.group(|ui| {
-                        ui.label(egui::RichText::new("Arquivos do projeto").strong());
+                        ui.label(egui::RichText::new("Project Files").strong());
 
                         // Toolbar
                         ui.horizontal(|ui| {
-                            if ui.button("✅ Tudo").clicked() {
+                            if ui.button("All").clicked() {
                                 for node in &mut self.tree_nodes {
                                     node.set_checked(true);
                                 }
                             }
-                            if ui.button("❌ Nada").clicked() {
+                            if ui.button("None").clicked() {
                                 for node in &mut self.tree_nodes {
                                     node.set_checked(false);
                                 }
                             }
-                            if ui.button("🔄 Inverter").clicked() {
+                            if ui.button("Invert").clicked() {
                                 for node in &mut self.tree_nodes {
                                     node.invert_files();
                                 }
                             }
 
-                            let sel_count = self.contar_selecionados();
+                            let sel_count = self.count_selected();
                             ui.with_layout(
                                 egui::Layout::right_to_left(egui::Align::Center),
                                 |ui| {
-                                    ui.label(format!("{} selecionado(s)", sel_count));
+                                    ui.label(format!("{} selected", sel_count));
                                 },
                             );
                         });
 
-                        // Busca
+                        // Search
                         ui.horizontal(|ui| {
-                            ui.label("🔍");
+                            ui.label("Search:");
                             ui.add(
-                                egui::TextEdit::singleline(&mut self.busca)
+                                egui::TextEdit::singleline(&mut self.search)
                                     .desired_width(ui.available_width())
-                                    .hint_text("Buscar arquivo…"),
+                                    .hint_text("Search file…"),
                             );
                         });
 
                         ui.add_space(4.0);
 
-                        // Árvore de arquivos
-                        let search_term = self.busca.trim().to_lowercase();
-                        let base = self.caminho_projeto.clone();
+                        // File tree
+                        let search_term = self.search.trim().to_lowercase();
+                        let base = self.project_path.clone();
 
                         let mut preview_path: Option<PathBuf> = None;
 
@@ -607,74 +607,74 @@ impl eframe::App for App {
                             });
 
                         if let Some(path) = preview_path {
-                            self.mostrar_preview(&path, &base);
+                            self.show_preview(&path, &base);
                         }
                     });
                 });
 
                 ui.add_space(4.0);
 
-                // ━━━ PAINEL DIREITO: resultado / preview ━━━
+                // ━━━ RIGHT PANEL: result / preview ━━━
                 ui.vertical(|ui| {
                     ui.group(|ui| {
-                        ui.label(egui::RichText::new("Resultado da extração").strong());
+                        ui.label(egui::RichText::new("Extraction Result").strong());
 
-                        // Toolbar do resultado
+                        // Result toolbar
                         ui.horizontal(|ui| {
-                            if !self.resultado_conteudo.is_empty() {
+                            if !self.result_content.is_empty() {
                                 ui.label(&self.result_label);
                                 ui.with_layout(
                                     egui::Layout::right_to_left(egui::Align::Center),
                                     |ui| {
-                                        // Salvar
-                                        if ui.button("💾 Salvar").clicked() {
-                                            let ext = match self.formato_saida {
-                                                FormatoSaida::Markdown => "md",
-                                                FormatoSaida::Texto => "txt",
+                                        // Save
+                                        if ui.button("Save").clicked() {
+                                            let ext = match self.output_format {
+                                                OutputFormat::Markdown => "md",
+                                                OutputFormat::Text => "txt",
                                             };
                                             let file = rfd::FileDialog::new()
                                                 .set_file_name(&format!(
-                                                    "codigo_completo.{}",
+                                                    "full_code.{}",
                                                     ext
                                                 ))
                                                 .add_filter("Markdown", &["md"])
-                                                .add_filter("Texto", &["txt"])
-                                                .add_filter("Todos", &["*"])
+                                                .add_filter("Text", &["txt"])
+                                                .add_filter("All", &["*"])
                                                 .save_file();
                                             if let Some(path) = file {
                                                 if let Err(e) = std::fs::write(
                                                     &path,
-                                                    &self.resultado_conteudo,
+                                                    &self.result_content,
                                                 ) {
                                                     self.status_label =
-                                                        format!("Erro ao salvar: {}", e);
+                                                        format!("Error saving: {}", e);
                                                 } else {
                                                     self.status_label = format!(
-                                                        "💾 Salvo em: {}",
+                                                        "Saved to: {}",
                                                         path.display()
                                                     );
                                                 }
                                             }
                                         }
 
-                                        // Copiar minificado
+                                        // Copy minified
                                         let btn_mini_text =
-                                            if self.copiado_mini_feedback.is_some() {
-                                                "✅ Mini copiado!"
+                                            if self.copied_mini_feedback.is_some() {
+                                                "Minified copied!"
                                             } else {
-                                                "🗜️ Copiar mini"
+                                                "Copy Minified"
                                             };
                                         if ui
                                             .button(btn_mini_text)
                                             .on_hover_text(
-                                                "Copia o conteúdo minificado (sem espaços extras) para colar em LLMs",
+                                                "Copies minified content (no extra spaces) for pasting in LLMs",
                                             )
                                             .clicked()
                                         {
-                                            let mini = minificar(&self.resultado_conteudo);
-                                            let original_len = self.resultado_conteudo.len();
+                                            let mini = minify(&self.result_content);
+                                            let original_len = self.result_content.len();
                                             let mini_len = mini.len();
-                                            let economia = if original_len > 0 {
+                                            let savings = if original_len > 0 {
                                                 100.0
                                                     - (mini_len as f64 / original_len as f64
                                                         * 100.0)
@@ -683,30 +683,29 @@ impl eframe::App for App {
                                             };
                                             if let Ok(mut clipboard) = arboard::Clipboard::new() {
                                                 let _ = clipboard.set_text(&mini);
-                                                self.copiado_mini_feedback =
+                                                self.copied_mini_feedback =
                                                     Some(std::time::Instant::now());
                                                 self.status_label = format!(
-                                                    "🗜️ Minificado copiado! {} → {} chars ({:.0}% menor)",
-                                                    original_len, mini_len, economia
+                                                    "Minified copied! {} → {} chars ({:.0}% smaller)",
+                                                    original_len, mini_len, savings
                                                 );
                                             }
                                         }
 
-                                        // Copiar
-                                        let btn_text = if self.copiado_feedback.is_some() {
-                                            "✅ Copiado!"
+                                        // Copy all
+                                        let btn_text = if self.copied_feedback.is_some() {
+                                            "Copied!"
                                         } else {
-                                            "📋 Copiar tudo"
+                                            "Copy All"
                                         };
                                         if ui.button(btn_text).clicked() {
                                             if let Ok(mut clipboard) = arboard::Clipboard::new() {
                                                 let _ = clipboard
-                                                    .set_text(&self.resultado_conteudo);
-                                                self.copiado_feedback =
+                                                    .set_text(&self.result_content);
+                                                self.copied_feedback =
                                                     Some(std::time::Instant::now());
                                                 self.status_label =
-                                                    "📋 Conteúdo copiado para a área de transferência!"
-                                                        .to_string();
+                                                    "Content copied to clipboard!".to_string();
                                             }
                                         }
                                     },
@@ -720,11 +719,11 @@ impl eframe::App for App {
 
                         ui.add_space(4.0);
 
-                        // Área de texto
-                        let text_to_show = if !self.resultado_conteudo.is_empty() {
-                            &self.resultado_conteudo
+                        // Text area
+                        let text_to_show = if !self.result_content.is_empty() {
+                            &self.result_content
                         } else if self.show_preview {
-                            &self.preview_conteudo
+                            &self.preview_content
                         } else {
                             ""
                         };
@@ -747,7 +746,7 @@ impl eframe::App for App {
     }
 }
 
-// ── Renderização da árvore ──────────────────────────────────
+// ── Tree rendering ─────────────────────────────────────────
 
 fn render_tree_node(
     ui: &mut egui::Ui,

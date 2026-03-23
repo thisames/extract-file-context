@@ -9,12 +9,12 @@ fn main() -> eframe::Result<()> {
         viewport: egui::ViewportBuilder::default()
             .with_inner_size([1100.0, 750.0])
             .with_min_inner_size([900.0, 600.0])
-            .with_title("📦 Extrator de Contexto de Projeto"),
+            .with_title("Project Context Extractor"),
         ..Default::default()
     };
 
     eframe::run_native(
-        "Extrator de Contexto de Projeto",
+        "Project Context Extractor",
         options,
         Box::new(|cc| {
             let mut visuals = egui::Visuals::dark();

@@ -1,13 +1,13 @@
 // ══════════════════════════════════════════════════════════════
-//  Lógica de extração, árvore de arquivos e minificação
+//  Extraction logic, file tree and minification
 // ══════════════════════════════════════════════════════════════
 
-use crate::config::extensao_linguagem;
+use crate::config::extension_to_language;
 use std::collections::{BTreeMap, HashSet};
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 
-// ── Nó da árvore de arquivos ────────────────────────────────
+// ── File tree node ────────────────────────────────────────
 
 #[derive(Clone)]
 pub struct FileNode {
@@ -61,7 +61,7 @@ impl FileNode {
         result
     }
 
-    /// Retorna true se algum nó casa com o filtro de busca
+    /// Returns true if any node matches the search filter
     pub fn matches_search(&self, term: &str) -> bool {
         if term.is_empty() {
             return true;
@@ -74,7 +74,7 @@ impl FileNode {
     }
 }
 
-// ── Construir árvore a partir do sistema de arquivos ────────
+// ── Build tree from file system ────────────────────
 
 pub fn build_tree(
     dir: &Path,
@@ -152,17 +152,17 @@ pub fn build_tree(
     Some(nodes)
 }
 
-// ── Gerar árvore textual ────────────────────────────────────
+// ── Generate text tree ────────────────────────────
 
-pub fn gerar_arvore_texto(arquivos: &[PathBuf], base: &Path) -> String {
-    let mut caminhos: Vec<String> = arquivos
+pub fn generate_tree_text(files: &[PathBuf], base: &Path) -> String {
+    let mut paths: Vec<String> = files
         .iter()
         .filter_map(|f| f.strip_prefix(base).ok())
         .map(|p| p.to_string_lossy().to_string())
         .collect();
-    caminhos.sort();
+    paths.sort();
 
-    if caminhos.is_empty() {
+    if paths.is_empty() {
         return String::new();
     }
 
@@ -187,8 +187,8 @@ pub fn gerar_arvore_texto(arquivos: &[PathBuf], base: &Path) -> String {
     }
 
     let mut root = BTreeMap::new();
-    for caminho in &caminhos {
-        let parts: Vec<&str> = caminho.split('/').collect();
+    for path in &paths {
+        let parts: Vec<&str> = path.split('/').collect();
         insert(&mut root, &parts);
     }
 
@@ -224,95 +224,95 @@ pub fn gerar_arvore_texto(arquivos: &[PathBuf], base: &Path) -> String {
     lines.join("\n")
 }
 
-// ── Extrair arquivos ────────────────────────────────────────
+// ── Extract files ────────────────────────────────
 
-pub fn extrair_arquivos(
-    arquivos: &[PathBuf],
+pub fn extract_files(
+    files: &[PathBuf],
     base: &Path,
-    formato: &str,
-    incluir_arvore: bool,
+    format: &str,
+    include_tree: bool,
     progress: Option<Arc<Mutex<(usize, usize, String)>>>,
 ) -> (String, usize) {
-    let total = arquivos.len();
-    let is_md = formato == "md";
-    let mut partes = Vec::new();
-    let mut total_linhas = 0usize;
+    let total = files.len();
+    let is_md = format == "md";
+    let mut parts = Vec::new();
+    let mut total_lines = 0usize;
 
-    let nome_projeto = base
+    let project_name = base
         .file_name()
         .map(|n| n.to_string_lossy().to_string())
         .unwrap_or_else(|| base.to_string_lossy().to_string());
 
-    // Cabeçalho (será atualizado depois com contagem de linhas)
-    let header_start = partes.len();
+    // Header (will be updated later with line count)
+    let header_start = parts.len();
     if is_md {
-        partes.push(format!("# 📦 Contexto do Projeto: {}\n\n", nome_projeto));
-        partes.push(format!("> Extraído de `{}`\n", base.display()));
-        partes.push(format!("> Total de arquivos: {}\n", total));
-        partes.push("LINHAS: [CALCULANDO...]\n\n".to_string());
+        parts.push(format!("# Project Context: {}\n\n", project_name));
+        parts.push(format!("> Extracted from `{}`\n", base.display()));
+        parts.push(format!("> Total files: {}\n", total));
+        parts.push("LINES: [CALCULATING...]\n\n".to_string());
     } else {
-        partes.push(format!("PROJETO: {}\n", nome_projeto));
-        partes.push(format!("CAMINHO: {}\n", base.display()));
-        partes.push(format!("TOTAL DE ARQUIVOS: {}\n", total));
-        partes.push("TOTAL DE LINHAS: [CALCULANDO...]\n\n".to_string());
+        parts.push(format!("PROJECT: {}\n", project_name));
+        parts.push(format!("PATH: {}\n", base.display()));
+        parts.push(format!("TOTAL FILES: {}\n", total));
+        parts.push("TOTAL LINES: [CALCULATING...]\n\n".to_string());
     }
 
-    // Árvore do projeto
-    if incluir_arvore {
-        let arvore = gerar_arvore_texto(arquivos, base);
+    // Project structure
+    if include_tree {
+        let tree = generate_tree_text(files, base);
         if is_md {
-            partes.push("## 🗂️ Estrutura do Projeto\n\n".to_string());
-            partes.push("```\n".to_string());
-            partes.push(arvore);
-            partes.push("\n```\n\n".to_string());
-            partes.push("---\n\n".to_string());
+            parts.push("## Project Structure\n\n".to_string());
+            parts.push("```\n".to_string());
+            parts.push(tree);
+            parts.push("\n```\n\n".to_string());
+            parts.push("---\n\n".to_string());
         } else {
-            partes.push(format!("{}\n", "=".repeat(60)));
-            partes.push("ESTRUTURA DO PROJETO\n".to_string());
-            partes.push(format!("{}\n\n", "=".repeat(60)));
-            partes.push(arvore);
-            partes.push(format!("\n\n{}\n\n", "=".repeat(60)));
+            parts.push(format!("{}\n", "=".repeat(60)));
+            parts.push("PROJECT STRUCTURE\n".to_string());
+            parts.push(format!("{}\n\n", "=".repeat(60)));
+            parts.push(tree);
+            parts.push(format!("\n\n{}\n\n", "=".repeat(60)));
         }
     }
 
-    // Arquivos
-    for (i, caminho) in arquivos.iter().enumerate() {
-        let caminho_relativo = caminho
+    // Files
+    for (i, path) in files.iter().enumerate() {
+        let relative_path = path
             .strip_prefix(base)
-            .unwrap_or(caminho)
+            .unwrap_or(path)
             .to_string_lossy()
             .to_string();
 
         if let Some(ref prog) = progress {
             if let Ok(mut p) = prog.lock() {
-                *p = (i + 1, total, caminho_relativo.clone());
+                *p = (i + 1, total, relative_path.clone());
             }
         }
 
-        match std::fs::read_to_string(caminho) {
-            Ok(conteudo) => {
-                let num_linhas = conteudo.lines().count();
-                total_linhas += num_linhas;
+        match std::fs::read_to_string(path) {
+            Ok(content) => {
+                let num_lines = content.lines().count();
+                total_lines += num_lines;
 
                 if is_md {
-                    let ext = caminho
+                    let ext = path
                         .extension()
                         .map(|e| format!(".{}", e.to_string_lossy().to_lowercase()))
                         .unwrap_or_default();
-                    let lang = extensao_linguagem(&ext);
-                    partes.push(format!("## 📄 `{}`\n\n", caminho_relativo));
-                    partes.push(format!("```{}\n", lang));
-                    partes.push(conteudo.clone());
-                    if !conteudo.ends_with('\n') {
-                        partes.push("\n".to_string());
+                    let lang = extension_to_language(&ext);
+                    parts.push(format!("## `{}`\n\n", relative_path));
+                    parts.push(format!("```{}\n", lang));
+                    parts.push(content.clone());
+                    if !content.ends_with('\n') {
+                        parts.push("\n".to_string());
                     }
-                    partes.push("```\n\n".to_string());
+                    parts.push("```\n\n".to_string());
                 } else {
-                    partes.push(format!("\n{}\n", "=".repeat(60)));
-                    partes.push(format!("ARQUIVO: {}\n", caminho_relativo));
-                    partes.push(format!("{}\n\n", "=".repeat(60)));
-                    partes.push(conteudo);
-                    partes.push("\n".to_string());
+                    parts.push(format!("\n{}\n", "=".repeat(60)));
+                    parts.push(format!("FILE: {}\n", relative_path));
+                    parts.push(format!("{}\n\n", "=".repeat(60)));
+                    parts.push(content);
+                    parts.push("\n".to_string());
                 }
             }
             Err(e) => {
@@ -321,59 +321,59 @@ pub fn extrair_arquivos(
                     || err_str.contains("stream did not contain valid UTF-8")
                 {
                     if is_md {
-                        partes.push(format!(
-                            "## 📄 `{}` ⚠️ BINÁRIO IGNORADO\n\n",
-                            caminho_relativo
+                        parts.push(format!(
+                            "## `{}` - BINARY IGNORED\n\n",
+                            relative_path
                         ));
                     } else {
-                        partes.push(format!("\n{}\n", "=".repeat(60)));
-                        partes.push(format!(
-                            "ARQUIVO: {} [BINÁRIO IGNORADO]\n",
-                            caminho_relativo
+                        parts.push(format!("\n{}\n", "=".repeat(60)));
+                        parts.push(format!(
+                            "FILE: {} [BINARY IGNORED]\n",
+                            relative_path
                         ));
-                        partes.push(format!("{}\n\n", "=".repeat(60)));
+                        parts.push(format!("{}\n\n", "=".repeat(60)));
                     }
                 } else {
-                    partes.push(format!(
-                        "\n[ERRO AO LER {}]: {}\n",
-                        caminho_relativo, e
+                    parts.push(format!(
+                        "\n[ERROR READING {}]: {}\n",
+                        relative_path, e
                     ));
                 }
             }
         }
     }
 
-    // Atualizar cabeçalho com contagem de linhas
+    // Update header with line count
     let line_info = if is_md {
-        format!("> Total de linhas: {}\n\n", total_linhas)
+        format!("> Total lines: {}\n\n", total_lines)
     } else {
-        format!("TOTAL DE LINHAS: {}\n\n", total_linhas)
+        format!("TOTAL LINES: {}\n\n", total_lines)
     };
-    partes[header_start + 3] = line_info;
+    parts[header_start + 3] = line_info;
 
-    (partes.join(""), total_linhas)
+    (parts.join(""), total_lines)
 }
 
-// ── Minificar conteúdo para LLM ─────────────────────────────
+// ── Minify content for LLM ─────────────────────────
 
-pub fn minificar(conteudo: &str) -> String {
-    let mut resultado = String::with_capacity(conteudo.len());
-    let mut linha_vazia_anterior = false;
+pub fn minify(content: &str) -> String {
+    let mut result = String::with_capacity(content.len());
+    let mut previous_empty_line = false;
 
-    for linha in conteudo.lines() {
-        let trimmed = linha.trim();
+    for line in content.lines() {
+        let trimmed = line.trim();
 
-        // Pula linhas totalmente vazias consecutivas
+        // Skip consecutive empty lines
         if trimmed.is_empty() {
-            if !linha_vazia_anterior {
-                resultado.push('\n');
-                linha_vazia_anterior = true;
+            if !previous_empty_line {
+                result.push('\n');
+                previous_empty_line = true;
             }
             continue;
         }
-        linha_vazia_anterior = false;
+        previous_empty_line = false;
 
-        // Pula linhas decorativas (só ====, ----, etc.)
+        // Skip decorative lines (only ====, ----, etc.)
         if trimmed
             .chars()
             .all(|c| c == '=' || c == '-' || c == '─' || c == '━')
@@ -382,19 +382,19 @@ pub fn minificar(conteudo: &str) -> String {
             continue;
         }
 
-        // Remove indentação excessiva: mantém apenas 1 espaço por nível de tab/4 espaços
-        let leading_spaces = linha.len() - linha.trim_start().len();
+        // Remove excessive indentation: keep only 1 space per tab/4 spaces
+        let leading_spaces = line.len() - line.trim_start().len();
         let indent_level = leading_spaces / 4;
         if indent_level > 0 {
             for _ in 0..indent_level {
-                resultado.push(' ');
+                result.push(' ');
             }
         }
 
-        resultado.push_str(trimmed);
-        resultado.push('\n');
+        result.push_str(trimmed);
+        result.push('\n');
     }
 
-    resultado
+    result
 }
 
