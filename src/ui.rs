@@ -68,6 +68,9 @@ pub struct App {
 
     // Count
     total_found: usize,
+
+    // Theme
+    dark_mode: bool,
 }
 
 impl App {
@@ -97,6 +100,7 @@ impl App {
             copied_feedback: None,
             copied_mini_feedback: None,
             total_found: 0,
+            dark_mode: true,
         }
     }
 
@@ -289,6 +293,17 @@ impl eframe::App for App {
             }
         }
 
+        // ── Apply theme ──
+        if self.dark_mode {
+            let mut visuals = egui::Visuals::dark();
+            visuals.override_text_color = Some(egui::Color32::from_rgb(212, 212, 212));
+            ctx.set_visuals(visuals);
+        } else {
+            let mut visuals = egui::Visuals::light();
+            visuals.override_text_color = Some(egui::Color32::from_rgb(30, 30, 30));
+            ctx.set_visuals(visuals);
+        }
+
         // ── Top bar ──
         egui::TopBottomPanel::top("top_bar").show(ctx, |ui| {
             ui.add_space(4.0);
@@ -314,6 +329,14 @@ impl eframe::App for App {
                 if ui.button("Reload").clicked() {
                     self.load_tree();
                 }
+
+                // Theme toggle (right-aligned)
+                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                    let theme_label = if self.dark_mode { "☀ Light" } else { "🌙 Dark" };
+                    if ui.button(theme_label).clicked() {
+                        self.dark_mode = !self.dark_mode;
+                    }
+                });
             });
             ui.add_space(4.0);
         });

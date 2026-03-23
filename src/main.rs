@@ -16,11 +16,7 @@ fn main() -> eframe::Result<()> {
     eframe::run_native(
         "Project Context Extractor",
         options,
-        Box::new(|cc| {
-            let mut visuals = egui::Visuals::dark();
-            visuals.override_text_color = Some(egui::Color32::from_rgb(212, 212, 212));
-            cc.egui_ctx.set_visuals(visuals);
-
+        Box::new(|_cc| {
             Ok(Box::new(ui::App::new()))
         }),
     )
