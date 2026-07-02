@@ -78,7 +78,7 @@ impl App {
         Self {
             project_path: String::new(),
             tree_nodes: Vec::new(),
-            output_format: OutputFormat::Markdown,
+            output_format: OutputFormat::Text,
             include_tree: true,
             ignored_dirs: default_ignored_dirs(),
             ignored_exts: default_ignored_extensions(),
@@ -137,8 +137,13 @@ impl App {
         self.tree_nodes = build_tree(&path, &dirs_set, &exts_set, &filter).unwrap_or_default();
 
         self.total_found = self.tree_nodes.iter().map(|n| n.total_files()).sum();
+
+        // Limpeza de memória mais agressiva
         self.result_content.clear();
+        self.result_content.shrink_to_fit();
         self.preview_content.clear();
+        self.preview_content.shrink_to_fit();
+
         self.show_preview = false;
         self.result_label =
             "Click a file for preview or extract to see the result here.".to_string();
@@ -223,7 +228,12 @@ impl App {
                     ));
                 }
                 self.preview_label = format!("Preview: {}", relative_path);
+
+                // Força realocação enxuta se for substituir arquivo anterior maior
+                self.preview_content.clear();
+                self.preview_content.shrink_to_fit();
                 self.preview_content = content;
+
                 self.show_preview = true;
             }
             Err(e) => {
@@ -234,6 +244,7 @@ impl App {
                     self.preview_label = format!("Error reading {}: {}", relative_path, e);
                 }
                 self.preview_content.clear();
+                self.preview_content.shrink_to_fit();
                 self.show_preview = true;
             }
         }
@@ -267,7 +278,12 @@ impl eframe::App for App {
 
             if let Some((result, lines)) = self.extraction_result.lock().unwrap().take() {
                 let total = self.count_selected();
+
+                // Limpa antes de atribuir o novo resultado para desalocar a string antiga
+                self.result_content.clear();
+                self.result_content.shrink_to_fit();
                 self.result_content = result;
+
                 self.result_label = format!(
                     "Extraction result — {} file(s), {} lines — Ready to copy!",
                     total, lines
@@ -536,13 +552,13 @@ impl eframe::App for App {
                         ui.horizontal(|ui| {
                             ui.radio_value(
                                 &mut self.output_format,
-                                OutputFormat::Markdown,
-                                "Markdown (.md)",
+                                OutputFormat::Text,
+                                "Text (.txt)",
                             );
                             ui.radio_value(
                                 &mut self.output_format,
-                                OutputFormat::Text,
-                                "Text (.txt)",
+                                OutputFormat::Markdown,
+                                "Markdown (.md)",
                             );
                         });
                         ui.checkbox(&mut self.include_tree, "Include project tree");
@@ -742,20 +758,22 @@ impl eframe::App for App {
 
                         ui.add_space(4.0);
 
-                        // Text area
-                        let text_to_show = if !self.result_content.is_empty() {
-                            &self.result_content
+                        // ── Text area otimizada (sem `.to_string()` iterativo) ──
+                        let mut empty_text = String::new();
+
+                        let text_ref = if !self.result_content.is_empty() {
+                            &mut self.result_content
                         } else if self.show_preview {
-                            &self.preview_content
+                            &mut self.preview_content
                         } else {
-                            ""
+                            &mut empty_text
                         };
 
                         egui::ScrollArea::both()
                             .id_salt("result_text")
                             .show(ui, |ui| {
                                 ui.add(
-                                    egui::TextEdit::multiline(&mut text_to_show.to_string())
+                                    egui::TextEdit::multiline(text_ref)
                                         .desired_width(ui.available_width())
                                         .desired_rows(30)
                                         .font(egui::TextStyle::Monospace)

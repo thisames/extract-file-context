@@ -235,7 +235,6 @@ pub fn extract_files(
 ) -> (String, usize) {
     let total = files.len();
     let is_md = format == "md";
-    let mut parts = Vec::new();
     let mut total_lines = 0usize;
 
     let project_name = base
@@ -243,35 +242,20 @@ pub fn extract_files(
         .map(|n| n.to_string_lossy().to_string())
         .unwrap_or_else(|| base.to_string_lossy().to_string());
 
-    // Header (will be updated later with line count)
-    let header_start = parts.len();
-    if is_md {
-        parts.push(format!("# Project Context: {}\n\n", project_name));
-        parts.push(format!("> Extracted from `{}`\n", base.display()));
-        parts.push(format!("> Total files: {}\n", total));
-        parts.push("LINES: [CALCULATING...]\n\n".to_string());
-    } else {
-        parts.push(format!("PROJECT: {}\n", project_name));
-        parts.push(format!("PATH: {}\n", base.display()));
-        parts.push(format!("TOTAL FILES: {}\n", total));
-        parts.push("TOTAL LINES: [CALCULATING...]\n\n".to_string());
-    }
+    // Pré-aloca ~1MB para evitar realocações dinâmicas
+    let mut body = String::with_capacity(1024 * 1024);
 
     // Project structure
     if include_tree {
         let tree = generate_tree_text(files, base);
         if is_md {
-            parts.push("## Project Structure\n\n".to_string());
-            parts.push("```\n".to_string());
-            parts.push(tree);
-            parts.push("\n```\n\n".to_string());
-            parts.push("---\n\n".to_string());
+            body.push_str("## Project Structure\n\n```\n");
+            body.push_str(&tree);
+            body.push_str("\n```\n\n---\n\n");
         } else {
-            parts.push(format!("{}\n", "=".repeat(60)));
-            parts.push("PROJECT STRUCTURE\n".to_string());
-            parts.push(format!("{}\n\n", "=".repeat(60)));
-            parts.push(tree);
-            parts.push(format!("\n\n{}\n\n", "=".repeat(60)));
+            body.push_str(&format!("{}\nPROJECT STRUCTURE\n{}\n\n", "=".repeat(60), "=".repeat(60)));
+            body.push_str(&tree);
+            body.push_str(&format!("\n\n{}\n\n", "=".repeat(60)));
         }
     }
 
@@ -300,58 +284,52 @@ pub fn extract_files(
                         .map(|e| format!(".{}", e.to_string_lossy().to_lowercase()))
                         .unwrap_or_default();
                     let lang = extension_to_language(&ext);
-                    parts.push(format!("## `{}`\n\n", relative_path));
-                    parts.push(format!("```{}\n", lang));
-                    parts.push(content.clone());
+
+                    body.push_str(&format!("## `{}`\n\n```{}\n", relative_path, lang));
+                    body.push_str(&content);
                     if !content.ends_with('\n') {
-                        parts.push("\n".to_string());
+                        body.push('\n');
                     }
-                    parts.push("```\n\n".to_string());
+                    body.push_str("```\n\n");
                 } else {
-                    parts.push(format!("\n{}\n", "=".repeat(60)));
-                    parts.push(format!("FILE: {}\n", relative_path));
-                    parts.push(format!("{}\n\n", "=".repeat(60)));
-                    parts.push(content);
-                    parts.push("\n".to_string());
+                    body.push_str(&format!("\n{}\nFILE: {}\n{}\n\n", "=".repeat(60), relative_path, "=".repeat(60)));
+                    body.push_str(&content);
+                    body.push('\n');
                 }
             }
             Err(e) => {
                 let err_str = e.to_string();
-                if err_str.contains("invalid utf-8")
-                    || err_str.contains("stream did not contain valid UTF-8")
-                {
+                if err_str.contains("invalid utf-8") || err_str.contains("stream did not contain valid UTF-8") {
                     if is_md {
-                        parts.push(format!(
-                            "## `{}` - BINARY IGNORED\n\n",
-                            relative_path
-                        ));
+                        body.push_str(&format!("## `{}` - BINARY IGNORED\n\n", relative_path));
                     } else {
-                        parts.push(format!("\n{}\n", "=".repeat(60)));
-                        parts.push(format!(
-                            "FILE: {} [BINARY IGNORED]\n",
-                            relative_path
-                        ));
-                        parts.push(format!("{}\n\n", "=".repeat(60)));
+                        body.push_str(&format!("\n{}\nFILE: {} [BINARY IGNORED]\n{}\n\n", "=".repeat(60), relative_path, "=".repeat(60)));
                     }
                 } else {
-                    parts.push(format!(
-                        "\n[ERROR READING {}]: {}\n",
-                        relative_path, e
-                    ));
+                    body.push_str(&format!("\n[ERROR READING {}]: {}\n", relative_path, e));
                 }
             }
         }
     }
 
-    // Update header with line count
-    let line_info = if is_md {
-        format!("> Total lines: {}\n\n", total_lines)
-    } else {
-        format!("TOTAL LINES: {}\n\n", total_lines)
-    };
-    parts[header_start + 3] = line_info;
+    // Constrói o resultado final juntando o cabeçalho (agora com total_lines correto) com o body
+    let mut final_result = String::with_capacity(body.len() + 500);
 
-    (parts.join(""), total_lines)
+    if is_md {
+        final_result.push_str(&format!("# Project Context: {}\n\n", project_name));
+        final_result.push_str(&format!("> Extracted from `{}`\n", base.display()));
+        final_result.push_str(&format!("> Total files: {}\n", total));
+        final_result.push_str(&format!("> Total lines: {}\n\n", total_lines));
+    } else {
+        final_result.push_str(&format!("PROJECT: {}\n", project_name));
+        final_result.push_str(&format!("PATH: {}\n", base.display()));
+        final_result.push_str(&format!("TOTAL FILES: {}\n", total));
+        final_result.push_str(&format!("TOTAL LINES: {}\n\n", total_lines));
+    }
+
+    final_result.push_str(&body);
+
+    (final_result, total_lines)
 }
 
 // ── Minify content for LLM ─────────────────────────
@@ -397,4 +375,3 @@ pub fn minify(content: &str) -> String {
 
     result
 }
-
